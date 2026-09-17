@@ -19,6 +19,9 @@ def create_analysis(
     vertical_spacing_mean: float,
     vertical_spacing_std: float,
     edge_density: float = 0.0,
+    max_component_area_ratio: float = 0.0,
+    max_component_width_ratio: float = 0.0,
+    max_component_height_ratio: float = 0.0,
 ) -> ImageTextAnalysis:
 
     return ImageTextAnalysis(
@@ -36,6 +39,9 @@ def create_analysis(
         horizontal_projection_variance=horizontal_projection_variance,
         vertical_spacing_mean=vertical_spacing_mean,
         vertical_spacing_std=vertical_spacing_std,
+        max_component_area_ratio=max_component_area_ratio,
+        max_component_width_ratio=max_component_width_ratio,
+        max_component_height_ratio=max_component_height_ratio,
     )
 
 
@@ -176,6 +182,7 @@ def test_texture():
 
     assert result != ImageContentType.TEXT
 
+
 def test_text_with_signature():
 
     analysis = create_analysis(
@@ -190,6 +197,9 @@ def test_text_with_signature():
         horizontal_projection_variance=0.001869,
         vertical_spacing_mean=0.2565,
         vertical_spacing_std=0.1906,
+        max_component_area_ratio=19.54,
+        max_component_width_ratio=34.69,
+        max_component_height_ratio=3.94,
     )
 
     classifier = ImageContentClassifier()
@@ -213,6 +223,9 @@ def test_text_with_stamp():
         horizontal_projection_variance=0.000337,
         vertical_spacing_mean=0.4423,
         vertical_spacing_std=0.0,
+        max_component_area_ratio=17.84,
+        max_component_width_ratio=20.46,
+        max_component_height_ratio=17.73,
     )
 
     classifier = ImageContentClassifier()
@@ -236,10 +249,13 @@ def test_text_with_drawing():
         horizontal_projection_variance=0.008878,
         vertical_spacing_mean=0.3791,
         vertical_spacing_std=0.0,
+        max_component_area_ratio=12.70,
+        max_component_width_ratio=20.53,
+        max_component_height_ratio=8.12,
     )
 
     classifier = ImageContentClassifier()
 
     result = classifier.classify(analysis)
 
-    assert result == ImageContentType.MIXED    
+    assert result == ImageContentType.MIXED

@@ -48,6 +48,66 @@ def print_result(label, result):
         result.vertical_spacing_std
     )
 
+def print_component_statistics(label, result):
+    if not result.components:
+        return
+
+    areas = np.array(
+        [component.area for component in result.components],
+        dtype=float,
+    )
+
+    widths = np.array(
+        [component.width for component in result.components],
+        dtype=float,
+    )
+
+    heights = np.array(
+        [component.height for component in result.components],
+        dtype=float,
+    )
+
+    print(f"\n=== STATISTICS: {label} ===")
+
+    print("area:")
+    print(f"  median = {np.median(areas):.2f}")
+    print(f"  max    = {np.max(areas):.2f}")
+    print(
+        f"  ratio  = "
+        f"{np.max(areas) / np.median(areas):.2f}"
+    )
+
+    print("width:")
+    print(f"  median = {np.median(widths):.2f}")
+    print(f"  max    = {np.max(widths):.2f}")
+    print(
+        f"  ratio  = "
+        f"{np.max(widths) / np.median(widths):.2f}"
+    )
+
+    print("height:")
+    print(f"  median = {np.median(heights):.2f}")
+    print(f"  max    = {np.max(heights):.2f}")
+    print(
+        f"  ratio  = "
+        f"{np.max(heights) / np.median(heights):.2f}"
+    )    
+
+def print_components(label, result):
+    print(f"\n=== COMPONENTS: {label} ===")
+
+    for component in result.components:
+        print(
+            f"index={component.index} "
+            f"x={component.x:.1f} "
+            f"y={component.y:.1f} "
+            f"width={component.width:.1f} "
+            f"height={component.height:.1f} "
+            f"area={component.area:.1f} "
+            f"center=({component.center_x:.1f}, "
+            f"{component.center_y:.1f})"
+        )    
+
 
 def test_empty_image_does_not_have_text():
 
@@ -504,6 +564,16 @@ def test_image_with_signature():
         result
     )
 
+    print_component_statistics(
+        "TEXT + SIGNATURE",
+        result
+    )
+
+    print_components(
+        "TEXT + SIGNATURE",
+        result
+    )
+
     assert result.component_count > 0
     assert result.vertical_group_count > 0
 
@@ -561,6 +631,16 @@ def test_image_with_stamp():
     result = analyzer.analyze(image_bytes)
 
     print_result(
+        "TEXT + STAMP",
+        result
+    )
+
+    print_component_statistics(
+        "TEXT + STAMP",
+        result
+    )
+
+    print_components(
         "TEXT + STAMP",
         result
     )
@@ -652,6 +732,16 @@ def test_image_with_text_and_drawing():
         "TEXT + DRAWING",
         result
     )
+
+    print_components(
+        "TEXT + DRAWING",
+        result
+    )
+
+    print_component_statistics(
+        "TEXT + DRAWING",
+        result
+    )   
 
     assert result.edge_density > 0
     assert result.component_count > 0
@@ -818,3 +908,69 @@ def test_document_like_page():
 
     assert result.component_count > 0
     assert result.vertical_group_count > 1
+
+def test_components_are_extracted():
+
+    image = np.zeros(
+        (200, 300),
+        dtype=np.uint8
+    )
+
+    cv2.rectangle(
+        image,
+        (50, 40),
+        (100, 80),
+        255,
+        -1
+    )
+
+    analyzer = ImageTextAnalyzer()
+
+    result = analyzer.analyze(
+        create_image_bytes(image)
+    )
+
+    assert result.component_count > 0
+    assert len(result.components) == result.component_count
+
+    for component in result.components:
+        assert component.width > 0
+        assert component.height > 0
+        assert component.area > 0
+
+
+def test_component_coordinates_are_consistent():
+
+    image = np.zeros(
+        (200, 300),
+        dtype=np.uint8
+    )
+
+    cv2.rectangle(
+        image,
+        (50, 40),
+        (100, 80),
+        255,
+        -1
+    )
+
+    analyzer = ImageTextAnalyzer()
+
+    result = analyzer.analyze(
+        create_image_bytes(image)
+    )
+
+    assert len(result.components) > 0
+
+    component = result.components[0]
+
+    assert component.x >= 0
+    assert component.y >= 0
+
+    assert component.center_x == (
+        component.x + component.width / 2
+    )
+
+    assert component.center_y == (
+        component.y + component.height / 2
+    )    

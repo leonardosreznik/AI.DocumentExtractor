@@ -17,9 +17,13 @@ class PageContentDetector:
 
         text = page.get_text("text")
 
-        has_text = bool(text.strip())
+        has_text = bool(
+            text.strip()
+        )
 
-        blocks = page.get_text("dict")["blocks"]
+        blocks = page.get_text(
+            "dict"
+        ).get("blocks", [])
 
         images: list[DetectedImage] = []
 
@@ -39,31 +43,37 @@ class PageContentDetector:
                 DetectedImage(
                     index=index,
                     position=ImagePosition(
-                        x=x0,
-                        y=y0,
-                        width=x1 - x0,
-                        height=y1 - y0
-                    )
+                        x=float(x0),
+                        y=float(y0),
+                        width=float(x1 - x0),
+                        height=float(y1 - y0),
+                    ),
                 )
             )
 
-        has_images = len(images) > 0
+        has_images = bool(images)
 
         if has_text and has_images:
-            content_type = PageContentType.TEXT_AND_IMAGE
+
+            content_type = (
+                PageContentType.TEXT_AND_IMAGE
+            )
 
         elif has_text:
+
             content_type = PageContentType.TEXT
 
         elif has_images:
+
             content_type = PageContentType.IMAGE
 
         else:
+
             content_type = PageContentType.EMPTY
 
         return PageContentAnalysis(
             content_type=content_type,
             has_text=has_text,
             has_images=has_images,
-            images=images
+            images=images,
         )
