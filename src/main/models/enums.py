@@ -43,4 +43,10 @@ class PageContentType(str, Enum):
     TEXT_AND_IMAGE = "text_and_image"
     EMPTY = "empty"
 
+class ImageContentType(str, Enum):
+    TEXT = "text"
+    PHOTO = "photo"
+    GRAPHIC = "graphic"
+    MIXED = "mixed"
+    UNKNOWN = "unknown"
         

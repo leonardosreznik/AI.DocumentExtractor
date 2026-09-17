@@ -89,4 +89,28 @@ class PageContentAnalysis(BaseModel):
 
     images: list[DetectedImage] = Field(
         default_factory=list
-    )            
+    ) 
+
+class ImageTextAnalysis(BaseModel):
+    has_text: bool
+    confidence: float
+
+    edge_density: float
+
+    component_count: int
+
+    average_component_width: float
+    average_component_height: float
+    average_component_area: float
+
+    small_component_ratio: float
+    component_density: float
+
+    vertical_group_count: int
+
+    horizontal_coverage: float
+    horizontal_projection_variance: float
+
+    vertical_spacing_mean: float
+    vertical_spacing_std: float
+        
