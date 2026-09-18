@@ -33,6 +33,14 @@ from src.main.services.extractors.pdf import (
     PdfExtractor,
 )
 
+from src.main.services.storage.image_storage import (
+    ImageStorageService,
+)
+
+from src.main.services.storage.mongo_storage import (
+    MongoStorage,
+)
+
 
 class FakeOcrExtractor:
 
@@ -176,7 +184,8 @@ def create_test_image() -> bytes:
 
 def create_extractor(
     image_content_type: ImageContentType,
-    ocr_extractor: FakeOcrExtractor
+    ocr_extractor: FakeOcrExtractor,
+    image_storage_service: ImageStorageService | None = None,
 ) -> PdfExtractor:
 
     return PdfExtractor(
@@ -187,6 +196,7 @@ def create_extractor(
         ),
         ocr_detector=OcrDetector(),
         ocr_extractor=ocr_extractor,
+        image_storage_service=image_storage_service,
     )
 
 
@@ -424,3 +434,91 @@ def test_mixed_image_triggers_ocr():
     )
 
     assert ocr.call_count == 1
+
+
+def test_extract_image_stores_image():
+
+    storage = MongoStorage(
+        database_name="ai_document_extractor_test"
+    )
+
+    image_storage_service = ImageStorageService(
+        storage
+    )
+
+    image = create_test_image()
+
+    pdf = create_pdf(
+        image_bytes=image
+    )
+
+    pdf_document = pymupdf.open(
+        stream=pdf,
+        filetype="pdf"
+    )
+
+    try:
+
+        expected_image = (
+            pdf_document[0]
+            .get_text("dict")["blocks"][0]["image"]
+        )
+
+        ocr = FakeOcrExtractor()
+
+        extractor = create_extractor(
+            image_content_type=ImageContentType.PHOTO,
+            ocr_extractor=ocr,
+            image_storage_service=image_storage_service,
+        )
+
+        result = extractor.extract(
+            pdf
+        )
+
+        unit = result.units[0]
+
+        image_blocks = [
+            block
+            for block in unit.blocks
+            if block.type == DocumentBlockType.IMAGE
+        ]
+
+        assert len(image_blocks) == 1
+
+        image_block = image_blocks[0]
+
+        assert image_block.image_id is not None
+
+        assert image_block.image_url is not None
+
+        assert (
+            image_block.image_url
+            == f"/images/{image_block.image_id}"
+        )
+
+        stored_image = (
+            image_storage_service.get(
+                image_block.image_id
+            )
+        )
+
+        assert stored_image.read() == expected_image
+
+        assert (
+            stored_image.content_type
+            == "image/png"
+        )
+
+    finally:
+
+        if image_blocks:
+            for block in image_blocks:
+                if block.image_id:
+                    image_storage_service.delete(
+                        block.image_id
+                    )
+
+        pdf_document.close()
+
+        storage.close()

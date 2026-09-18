@@ -29,9 +29,14 @@ from src.main.services.extractors.ocr_extractor import (
 from src.main.services.extractors.page_content_detector import (
     PageContentDetector,
 )
+from src.main.services.storage.image_storage import (
+    ImageStorageService,
+)
 
 
 class PdfExtractor(DocumentExtractor):
+
+    IMAGE_URL_PREFIX = "/images"
 
     def __init__(
         self,
@@ -40,29 +45,28 @@ class PdfExtractor(DocumentExtractor):
         image_content_classifier: ImageContentClassifier | None = None,
         ocr_detector: OcrDetector | None = None,
         ocr_extractor: OcrExtractor | None = None,
+        image_storage_service: ImageStorageService | None = None,
     ):
-        self._page_content_detector = (
-            page_content_detector
-        )
+        self._page_content_detector = page_content_detector
 
         self._image_text_analyzer = (
-            image_text_analyzer
-            or ImageTextAnalyzer()
+            image_text_analyzer or ImageTextAnalyzer()
         )
 
         self._image_content_classifier = (
-            image_content_classifier
-            or ImageContentClassifier()
+            image_content_classifier or ImageContentClassifier()
         )
 
         self._ocr_detector = (
-            ocr_detector
-            or OcrDetector()
+            ocr_detector or OcrDetector()
         )
 
         self._ocr_extractor = (
-            ocr_extractor
-            or OcrExtractor()
+            ocr_extractor or OcrExtractor()
+        )
+
+        self._image_storage_service = (
+            image_storage_service
         )
 
     def can_handle(
@@ -106,9 +110,11 @@ class PdfExtractor(DocumentExtractor):
                     ExtractionMethod.NATIVE,
                     ExtractionMethod.HYBRID,
                 ):
+
                     has_native_text = True
 
                 if unit.ocr_used:
+
                     has_ocr_text = True
 
             extraction_method = (
@@ -140,9 +146,9 @@ class PdfExtractor(DocumentExtractor):
             )
         )
 
-        native_text = page.get_text(
-            "text"
-        ).strip()
+        native_text = (
+            page.get_text("text").strip()
+        )
 
         blocks: list[DocumentBlock] = []
 
@@ -156,30 +162,29 @@ class PdfExtractor(DocumentExtractor):
             )
 
         ocr_texts: list[str] = []
+
         ocr_used = False
 
-        page_blocks = page.get_text(
-            "dict"
-        ).get("blocks", [])
+        page_blocks = (
+            page.get_text("dict")
+            .get("blocks", [])
+        )
 
         for block in page_blocks:
 
             if block.get("type") != 1:
                 continue
 
-            image_bytes = block.get(
-                "image"
-            )
-
-            bbox = block.get(
-                "bbox"
-            )
+            image_bytes = block.get("image")
+            bbox = block.get("bbox")
 
             if not image_bytes or not bbox:
                 continue
 
-            position = self._create_image_position(
-                bbox
+            position = (
+                self._create_image_position(
+                    bbox
+                )
             )
 
             image_analysis = (
@@ -194,11 +199,29 @@ class PdfExtractor(DocumentExtractor):
                 )
             )
 
+            image_id = (
+                self._store_image(
+                    image_bytes=image_bytes,
+                    content_type=self._resolve_image_content_type(
+                        block
+                    ),
+                    page_number=index + 1,
+                )
+            )
+
+            image_url = (
+                self._create_image_url(
+                    image_id
+                )
+            )
+
             blocks.append(
                 DocumentBlock(
                     type=DocumentBlockType.IMAGE,
                     position=position,
                     image_content_type=image_content_type,
+                    image_id=image_id,
+                    image_url=image_url,
                 )
             )
 
@@ -229,9 +252,11 @@ class PdfExtractor(DocumentExtractor):
 
             ocr_used = True
 
-        combined_text = self._combine_text(
-            native_text=native_text,
-            ocr_texts=ocr_texts
+        combined_text = (
+            self._combine_text(
+                native_text=native_text,
+                ocr_texts=ocr_texts
+            )
         )
 
         extraction_method = (
@@ -252,6 +277,55 @@ class PdfExtractor(DocumentExtractor):
             extraction_method=extraction_method,
             ocr_used=ocr_used,
             blocks=blocks,
+        )
+
+    def _store_image(
+        self,
+        image_bytes: bytes,
+        content_type: str,
+        page_number: int,
+    ) -> str | None:
+
+        if self._image_storage_service is None:
+            return None
+
+        return self._image_storage_service.save(
+            image_bytes=image_bytes,
+            content_type=content_type,
+            file_name=f"page-{page_number}.png",
+            metadata={
+                "page_number": page_number,
+            },
+        )
+
+    @staticmethod
+    def _resolve_image_content_type(
+        block: dict
+    ) -> str:
+
+        content_type = block.get(
+            "ext"
+        )
+
+        if content_type:
+
+            return (
+                f"image/{content_type.lower()}"
+            )
+
+        return "application/octet-stream"
+
+    @classmethod
+    def _create_image_url(
+        cls,
+        image_id: str | None
+    ) -> str | None:
+
+        if image_id is None:
+            return None
+
+        return (
+            f"{cls.IMAGE_URL_PREFIX}/{image_id}"
         )
 
     @staticmethod
@@ -287,9 +361,7 @@ class PdfExtractor(DocumentExtractor):
             if text
         )
 
-        return "\n\n".join(
-            parts
-        )
+        return "\n\n".join(parts)
 
     @staticmethod
     def _resolve_page_extraction_method(

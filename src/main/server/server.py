@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.main.routes.health import health_routes
 from src.main.routes.documents import documents_routes
+from src.main.routes.images import images_routes
 
 app = FastAPI(
     title="AI Document Extractor",
@@ -19,3 +20,4 @@ app.add_middleware(
 
 app.include_router(health_routes)
 app.include_router(documents_routes)
+app.include_router(images_routes)

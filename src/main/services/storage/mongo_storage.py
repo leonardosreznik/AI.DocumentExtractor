@@ -20,6 +20,17 @@ class StoredImage:
         return self.data
 
 
+@dataclass
+class StoredImageMetadata:
+
+    image_id: str
+    content_type: str
+    filename: str | None
+    metadata: dict
+    created_at: datetime
+    expires_at: datetime | None
+
+
 class MongoStorage:
 
     COLLECTION_NAME = "document_images"
@@ -141,6 +152,51 @@ class MongoStorage:
             metadata=document.get(
                 "metadata",
                 {},
+            ),
+        )
+
+    def get_image_metadata(
+        self,
+        image_id: str,
+    ) -> StoredImageMetadata:
+
+        object_id = ObjectId(
+            image_id
+        )
+
+        document = (
+            self._collection.find_one(
+                {
+                    "_id": object_id
+                },
+                {
+                    "data": 0,
+                },
+            )
+        )
+
+        if document is None:
+            raise FileNotFoundError(
+                f"Imagem não encontrada: {image_id}"
+            )
+
+        return StoredImageMetadata(
+            image_id=image_id,
+            content_type=document[
+                "content_type"
+            ],
+            filename=document.get(
+                "filename"
+            ),
+            metadata=document.get(
+                "metadata",
+                {},
+            ),
+            created_at=document[
+                "created_at"
+            ],
+            expires_at=document.get(
+                "expires_at"
             ),
         )
 

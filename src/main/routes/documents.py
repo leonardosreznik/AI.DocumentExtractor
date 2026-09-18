@@ -1,5 +1,9 @@
 from fastapi import APIRouter
 
+from src.main.dependencies import (
+    get_image_storage_service,
+)
+
 from src.main.models.request import (
     DocumentExtractionRequest,
 )
@@ -71,6 +75,10 @@ ocr_extractor = (
     OcrExtractor()
 )
 
+image_storage_service = (
+    get_image_storage_service()
+)
+
 
 pdf_extractor = PdfExtractor(
     page_content_detector=page_content_detector,
@@ -78,6 +86,7 @@ pdf_extractor = PdfExtractor(
     image_content_classifier=image_content_classifier,
     ocr_detector=ocr_detector,
     ocr_extractor=ocr_extractor,
+    image_storage_service=image_storage_service,
 )
 
 
