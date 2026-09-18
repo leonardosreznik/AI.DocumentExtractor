@@ -97,37 +97,40 @@ class PdfExtractor(DocumentExtractor):
             has_native_text = False
             has_ocr_text = False
 
-            for index, page in enumerate(document):
+            for index, page in enumerate(
+                document
+            ):
 
                 unit = self._extract_page(
+                    document=document,
                     page=page,
-                    index=index
+                    index=index,
                 )
 
-                units.append(unit)
+                units.append(
+                    unit
+                )
 
                 if unit.extraction_method in (
                     ExtractionMethod.NATIVE,
                     ExtractionMethod.HYBRID,
                 ):
-
                     has_native_text = True
 
                 if unit.ocr_used:
-
                     has_ocr_text = True
 
             extraction_method = (
                 self._resolve_extraction_method(
                     has_native_text=has_native_text,
-                    has_ocr_text=has_ocr_text
+                    has_ocr_text=has_ocr_text,
                 )
             )
 
             return ExtractionResult(
                 units=units,
                 extraction_method=extraction_method,
-                ocr_used=has_ocr_text
+                ocr_used=has_ocr_text,
             )
 
         finally:
@@ -136,8 +139,9 @@ class PdfExtractor(DocumentExtractor):
 
     def _extract_page(
         self,
+        document: pymupdf.Document,
         page: pymupdf.Page,
-        index: int
+        index: int,
     ) -> DocumentUnit:
 
         analysis = (
@@ -147,7 +151,9 @@ class PdfExtractor(DocumentExtractor):
         )
 
         native_text = (
-            page.get_text("text").strip()
+            page.get_text(
+                "text"
+            ).strip()
         )
 
         blocks: list[DocumentBlock] = []
@@ -157,7 +163,7 @@ class PdfExtractor(DocumentExtractor):
             blocks.append(
                 DocumentBlock(
                     type=DocumentBlockType.TEXT,
-                    text=native_text
+                    text=native_text,
                 )
             )
 
@@ -165,27 +171,27 @@ class PdfExtractor(DocumentExtractor):
 
         ocr_used = False
 
-        page_blocks = (
-            page.get_text("dict")
-            .get("blocks", [])
-        )
+        image_index = 0
 
-        for block in page_blocks:
+        for detected_image in analysis.images:
 
-            if block.get("type") != 1:
-                continue
-
-            image_bytes = block.get("image")
-            bbox = block.get("bbox")
-
-            if not image_bytes or not bbox:
-                continue
-
-            position = (
-                self._create_image_position(
-                    bbox
+            image_data = (
+                self._extract_image(
+                    document=document,
+                    page=page,
+                    detected_image=detected_image,
                 )
             )
+
+            if image_data is None:
+                continue
+
+            (
+                image_bytes,
+                image_extension,
+            ) = image_data
+
+            image_index += 1
 
             image_analysis = (
                 self._image_text_analyzer.analyze(
@@ -199,13 +205,19 @@ class PdfExtractor(DocumentExtractor):
                 )
             )
 
+            content_type = (
+                self._resolve_content_type(
+                    image_extension
+                )
+            )
+
             image_id = (
                 self._store_image(
                     image_bytes=image_bytes,
-                    content_type=self._resolve_image_content_type(
-                        block
-                    ),
+                    content_type=content_type,
+                    extension=image_extension,
                     page_number=index + 1,
+                    image_index=image_index,
                 )
             )
 
@@ -218,7 +230,7 @@ class PdfExtractor(DocumentExtractor):
             blocks.append(
                 DocumentBlock(
                     type=DocumentBlockType.IMAGE,
-                    position=position,
+                    position=detected_image.position,
                     image_content_type=image_content_type,
                     image_id=image_id,
                     image_url=image_url,
@@ -246,7 +258,7 @@ class PdfExtractor(DocumentExtractor):
             blocks.append(
                 DocumentBlock(
                     type=DocumentBlockType.TEXT,
-                    text=ocr_text
+                    text=ocr_text,
                 )
             )
 
@@ -255,14 +267,14 @@ class PdfExtractor(DocumentExtractor):
         combined_text = (
             self._combine_text(
                 native_text=native_text,
-                ocr_texts=ocr_texts
+                ocr_texts=ocr_texts,
             )
         )
 
         extraction_method = (
             self._resolve_page_extraction_method(
                 has_native_text=bool(native_text),
-                has_ocr_text=bool(ocr_texts)
+                has_ocr_text=bool(ocr_texts),
             )
         )
 
@@ -279,41 +291,172 @@ class PdfExtractor(DocumentExtractor):
             blocks=blocks,
         )
 
+    @staticmethod
+    def _extract_image(
+        document: pymupdf.Document,
+        page: pymupdf.Page,
+        detected_image,
+    ) -> tuple[bytes, str] | None:
+
+        if detected_image.xref is not None:
+
+            try:
+
+                extracted = (
+                    document.extract_image(
+                        detected_image.xref
+                    )
+                )
+
+            except Exception:
+                return None
+
+            image_bytes = extracted.get(
+                "image"
+            )
+
+            extension = extracted.get(
+                "ext"
+            )
+
+            if not image_bytes or not extension:
+                return None
+
+            return (
+                image_bytes,
+                str(extension).lower(),
+            )
+
+        blocks = page.get_text(
+            "dict"
+        ).get(
+            "blocks",
+            []
+        )
+
+        for block in blocks:
+
+            if block.get(
+                "type"
+            ) != 1:
+                continue
+
+            bbox = block.get(
+                "bbox"
+            )
+
+            if not bbox:
+                continue
+
+            position = (
+                PdfExtractor._create_image_position(
+                    bbox
+                )
+            )
+
+            if not PdfExtractor._same_position(
+                position,
+                detected_image.position,
+            ):
+                continue
+
+            image_bytes = block.get(
+                "image"
+            )
+
+            extension = block.get(
+                "ext"
+            )
+
+            if not image_bytes:
+                return None
+
+            if not extension:
+                extension = "bin"
+
+            return (
+                image_bytes,
+                str(extension).lower(),
+            )
+
+        return None
+
+    @staticmethod
+    def _same_position(
+        first: ImagePosition,
+        second: ImagePosition,
+    ) -> bool:
+
+        tolerance = 0.01
+
+        return (
+            abs(first.x - second.x)
+            <= tolerance
+            and
+            abs(first.y - second.y)
+            <= tolerance
+            and
+            abs(first.width - second.width)
+            <= tolerance
+            and
+            abs(first.height - second.height)
+            <= tolerance
+        )
+
     def _store_image(
         self,
         image_bytes: bytes,
         content_type: str,
+        extension: str,
         page_number: int,
+        image_index: int,
     ) -> str | None:
 
         if self._image_storage_service is None:
             return None
 
+        file_name = (
+            f"page-{page_number}-"
+            f"image-{image_index}."
+            f"{extension}"
+        )
+
         return self._image_storage_service.save(
             image_bytes=image_bytes,
             content_type=content_type,
-            file_name=f"page-{page_number}.png",
+            file_name=file_name,
             metadata={
                 "page_number": page_number,
+                "image_index": image_index,
+                "extension": extension,
             },
         )
 
     @staticmethod
-    def _resolve_image_content_type(
-        block: dict
+    def _resolve_content_type(
+        extension: str,
     ) -> str:
 
-        content_type = block.get(
-            "ext"
+        extension = extension.lower()
+
+        content_types = {
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+            "png": "image/png",
+            "gif": "image/gif",
+            "bmp": "image/bmp",
+            "tif": "image/tiff",
+            "tiff": "image/tiff",
+            "jp2": "image/jp2",
+            "jpx": "image/jpx",
+            "webp": "image/webp",
+            "svg": "image/svg+xml",
+        }
+
+        return content_types.get(
+            extension,
+            f"image/{extension}",
         )
-
-        if content_type:
-
-            return (
-                f"image/{content_type.lower()}"
-            )
-
-        return "application/octet-stream"
 
     @classmethod
     def _create_image_url(
@@ -361,7 +504,9 @@ class PdfExtractor(DocumentExtractor):
             if text
         )
 
-        return "\n\n".join(parts)
+        return "\n\n".join(
+            parts
+        )
 
     @staticmethod
     def _resolve_page_extraction_method(

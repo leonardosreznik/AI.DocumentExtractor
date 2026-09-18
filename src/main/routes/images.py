@@ -46,7 +46,16 @@ def get_image(
             detail="Imagem não encontrada.",
         )
 
+    headers = {}
+
+    if image.filename:
+
+        headers["Content-Disposition"] = (
+            f'inline; filename="{image.filename}"'
+        )
+
     return Response(
         content=image.read(),
         media_type=image.content_type,
+        headers=headers,
     )

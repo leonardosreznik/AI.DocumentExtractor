@@ -111,6 +111,8 @@ class DetectedImage(BaseModel):
 
     position: ImagePosition
 
+    xref: int | None = None
+
 
 class PageContentAnalysis(BaseModel):
 
