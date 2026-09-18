@@ -20,9 +20,13 @@ class OcrExtractor:
 
     SECONDARY_PSM = 11
 
+    MIN_SECONDARY_CONFIDENCE = 30.0
+
     MIN_SECONDARY_LINE_LENGTH = 3
 
     DUPLICATE_SIMILARITY_THRESHOLD = 0.85
+
+    LINE_VERTICAL_TOLERANCE = 10
 
     def __init__(self):
 
@@ -150,14 +154,31 @@ class OcrExtractor:
                 line_number,
             )
 
+            left = float(
+                data["left"][index]
+            )
+
+            top = float(
+                data["top"][index]
+            )
+
+            width = float(
+                data["width"][index]
+            )
+
+            height = float(
+                data["height"][index]
+            )
+
             if key not in lines:
 
                 lines[key] = {
                     "text": text,
-                    "top": float(
-                        data["top"][index]
-                    ),
                     "confidence": confidence,
+                    "left": left,
+                    "top": top,
+                    "right": left + width,
+                    "bottom": top + height,
                 }
 
             else:
@@ -175,11 +196,24 @@ class OcrExtractor:
                     / 2
                 )
 
+                lines[key]["left"] = min(
+                    lines[key]["left"],
+                    left,
+                )
+
                 lines[key]["top"] = min(
                     lines[key]["top"],
-                    float(
-                        data["top"][index]
-                    ),
+                    top,
+                )
+
+                lines[key]["right"] = max(
+                    lines[key]["right"],
+                    left + width,
+                )
+
+                lines[key]["bottom"] = max(
+                    lines[key]["bottom"],
+                    top + height,
                 )
 
         return list(
@@ -199,12 +233,25 @@ class OcrExtractor:
 
         for secondary_line in secondary_lines:
 
-            text = secondary_line[
-                "text"
-            ].strip()
+            text = (
+                secondary_line["text"]
+                .strip()
+            )
 
             if len(text) < (
                 self.MIN_SECONDARY_LINE_LENGTH
+            ):
+                continue
+
+            if (
+                secondary_line["confidence"]
+                < self.MIN_SECONDARY_CONFIDENCE
+            ):
+                continue
+
+            if self._overlaps_existing_line(
+                secondary_line,
+                merged,
             ):
                 continue
 
@@ -228,6 +275,108 @@ class OcrExtractor:
         )
 
         return merged
+
+    def _overlaps_existing_line(
+        self,
+        candidate: dict,
+        existing_lines: list[dict],
+    ) -> bool:
+
+        for existing_line in existing_lines:
+
+            if self._lines_overlap(
+                candidate,
+                existing_line,
+            ):
+                return True
+
+        return False
+
+    @classmethod
+    def _lines_overlap(
+        cls,
+        first: dict,
+        second: dict,
+    ) -> bool:
+
+        vertical_overlap = (
+            cls._calculate_overlap(
+                first["top"],
+                first["bottom"],
+                second["top"],
+                second["bottom"],
+            )
+        )
+
+        if vertical_overlap > 0:
+            return True
+
+        first_center = (
+            first["top"]
+            + first["bottom"]
+        ) / 2
+
+        second_center = (
+            second["top"]
+            + second["bottom"]
+        ) / 2
+
+        return (
+            abs(
+                first_center
+                - second_center
+            )
+            <= cls.LINE_VERTICAL_TOLERANCE
+        )
+
+    @staticmethod
+    def _calculate_overlap(
+        first_start: float,
+        first_end: float,
+        second_start: float,
+        second_end: float,
+    ) -> float:
+
+        intersection_start = max(
+            first_start,
+            second_start,
+        )
+
+        intersection_end = min(
+            first_end,
+            second_end,
+        )
+
+        if intersection_end <= intersection_start:
+            return 0.0
+
+        intersection = (
+            intersection_end
+            - intersection_start
+        )
+
+        first_size = (
+            first_end
+            - first_start
+        )
+
+        second_size = (
+            second_end
+            - second_start
+        )
+
+        smallest_size = min(
+            first_size,
+            second_size,
+        )
+
+        if smallest_size <= 0:
+            return 0.0
+
+        return (
+            intersection
+            / smallest_size
+        )
 
     def _is_duplicate(
         self,
@@ -269,7 +418,10 @@ class OcrExtractor:
             )
         )
 
-        if not first_normalized or not second_normalized:
+        if (
+            not first_normalized
+            or not second_normalized
+        ):
             return 0.0
 
         return SequenceMatcher(
